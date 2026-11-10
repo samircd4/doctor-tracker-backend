@@ -8,6 +8,8 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
+import routes from "./routes/index.js";
+import { notFound, errorHandler } from "./middleware/errorHandler.js";
 
 const app = express();
 
@@ -23,6 +25,11 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", db });
 });
 
-// API routes are added here in later steps (auth, doctors, patients, stats)
+// --- API routes ---
+app.use("/api", routes);
+
+// --- Error handling (must come last) ---
+app.use("/api", notFound); // unknown /api/* route → 404 JSON
+app.use(errorHandler); // any thrown error → clean JSON response
 
 export default app;
