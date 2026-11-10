@@ -14,7 +14,7 @@ export function notFound(req, res) {
 export function errorHandler(err, req, res, next) {
   // Invalid MongoDB ObjectId in the URL, e.g. /api/doctors/abc
   if (err instanceof mongoose.Error.CastError) {
-    return res.status(400).json({ error: { message: `Invalid ${err.path}` } });
+    return res.status(400).json({ error: { message: `Invalid ${err.path === "_id" ? "id" : err.path}` } });
   }
 
   // Duplicate value on a unique index (e.g. doctor email already exists)

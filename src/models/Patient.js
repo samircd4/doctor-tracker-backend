@@ -35,10 +35,7 @@ patientSchema.index({ condition: 1, admittedAt: -1 });
 // Default patients list + date-based dashboard stats (admissions per month)
 patientSchema.index({ admittedAt: -1 });
 
-// Search box: full-text search on patient name / email / phone
-patientSchema.index(
-  { name: "text", email: "text", phone: "text" },
-  { weights: { name: 10, email: 3, phone: 3 }, name: "patient_text_search" }
-);
+// Patients list filtered by gender (+ optional date range), newest first
+patientSchema.index({ gender: 1, admittedAt: -1 });
 
 export default mongoose.model("Patient", patientSchema);

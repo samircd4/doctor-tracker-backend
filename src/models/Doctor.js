@@ -27,10 +27,4 @@ doctorSchema.index({ specialization: 1, createdAt: -1 });
 // Doctors list filtered by hospital (+ optional date range), newest first
 doctorSchema.index({ hospital: 1, createdAt: -1 });
 
-// Search box: full-text search across these fields (name matches rank highest)
-doctorSchema.index(
-  { name: "text", specialization: "text", hospital: "text", email: "text" },
-  { weights: { name: 10, email: 5, specialization: 3, hospital: 2 }, name: "doctor_text_search" }
-);
-
 export default mongoose.model("Doctor", doctorSchema);
