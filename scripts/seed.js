@@ -1,9 +1,10 @@
 /**
  * scripts/seed.js
- * Fills the database with an admin user and realistic sample data.
+ * Creates the demo users (admin + read-only staff) and realistic sample data.
  *
- * Usage:  npm run seed
- * WARNING: deletes all existing doctors and patients first.
+ * Usage:  npm run seed                      → users + sample data
+ *         npm run seed -- --users-only      → only create/update the two users (keeps all data)
+ * WARNING: without --users-only, deletes all existing doctors and patients first.
  */
 import "dotenv/config";
 import mongoose from "mongoose";
@@ -14,7 +15,12 @@ import Doctor from "../src/models/Doctor.js";
 import Patient, { CONDITIONS, GENDERS } from "../src/models/Patient.js";
 
 // ---------- Settings ----------
-const ADMIN = { name: "Admin", email: "admin@test.com", password: "Admin@123" };
+// admin: full access. staff: can view everything but not create/edit/delete (shows authorization).
+const USERS = [
+  { name: "Admin", email: "admin@test.com", password: "Admin@123", role: "admin" },
+  { name: "Staff", email: "staff@test.com", password: "Staff@123", role: "staff" },
+];
+const USERS_ONLY = process.argv.includes("--users-only");
 const DOCTOR_COUNT = 30;
 const PATIENT_COUNT = 500;
 const MONTHS_OF_HISTORY = 6;
@@ -37,14 +43,23 @@ async function seed() {
   await mongoose.connect(process.env.MONGODB_URI);
   console.log("Connected to MongoDB");
 
-  // 1. Admin user — upsert so running the seed twice doesn't duplicate it
-  const hashedPassword = await bcrypt.hash(ADMIN.password, 10);
-  await User.updateOne(
-    { email: ADMIN.email },
-    { $set: { name: ADMIN.name, password: hashedPassword } },
-    { upsert: true }
-  );
-  console.log(`Admin ready: ${ADMIN.email} / ${ADMIN.password}`);
+  // 1. Demo users — upsert so running the seed twice doesn't duplicate them
+  for (const user of USERS) {
+    const hashedPassword = await bcrypt.hash(user.password, 10);
+    await User.updateOne(
+      { email: user.email },
+      { $set: { name: user.name, password: hashedPassword, role: user.role } },
+      { upsert: true }
+    );
+    console.log(`${user.role.padEnd(5)} ready: ${user.email} / ${user.password}`);
+  }
+
+  if (USERS_ONLY) {
+    await User.syncIndexes();
+    await mongoose.disconnect();
+    console.log("Users updated (doctors and patients were not touched)");
+    return;
+  }
 
   // 2. Clear old sample data
   await Promise.all([Doctor.deleteMany({}), Patient.deleteMany({})]);

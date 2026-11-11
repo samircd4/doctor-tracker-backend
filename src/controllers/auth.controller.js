@@ -22,13 +22,16 @@ export async function login(req, res) {
     return res.status(401).json({ error: { message: "Invalid email or password" } });
   }
 
-  const token = jwt.sign({ sub: String(user._id), email: user.email }, process.env.JWT_SECRET, {
+  // The role goes into the token so requireRole can check it on every request.
+  // Users saved before roles existed get the least privilege ("staff").
+  const role = user.role || "staff";
+  const token = jwt.sign({ sub: String(user._id), email: user.email, role }, process.env.JWT_SECRET, {
     expiresIn: "1d",
   });
 
   // Token lives in an httpOnly cookie, never in localStorage
   res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_DAY_MS });
-  res.json({ data: { _id: user._id, name: user.name, email: user.email } });
+  res.json({ data: { _id: user._id, name: user.name, email: user.email, role } });
 }
 
 // POST /api/auth/logout
@@ -43,5 +46,5 @@ export async function me(req, res) {
   if (!user) {
     return res.status(401).json({ error: { message: "User no longer exists" } });
   }
-  res.json({ data: { _id: user._id, name: user.name, email: user.email } });
+  res.json({ data: { _id: user._id, name: user.name, email: user.email, role: user.role || "staff" } });
 }

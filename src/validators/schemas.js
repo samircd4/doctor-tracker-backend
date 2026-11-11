@@ -26,6 +26,9 @@ export const doctorSchema = z.object({
   email: z.email("Enter a valid email").trim().toLowerCase(),
 });
 
+// PUT /api/doctors/:id — same fields, all optional
+export const doctorUpdateSchema = doctorSchema.partial();
+
 // POST /api/doctors/:id/patients
 export const patientSchema = z.object({
   name: z.string("Name is required").trim().min(2, "Name is too short").max(100),

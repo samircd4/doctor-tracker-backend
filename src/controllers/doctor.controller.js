@@ -64,6 +64,30 @@ export async function getDoctor(req, res) {
   res.json({ data: { ...doctor, patientCount } });
 }
 
+// PUT /api/doctors/:id  (admin only)
+export async function updateDoctor(req, res) {
+  const doctor = await Doctor.findByIdAndUpdate(req.params.id, req.body, {
+    new: true, // return the updated document
+    runValidators: true, // apply schema rules on update too
+  }).lean(); // duplicate email → 409 via errorHandler
+  if (!doctor) return res.status(404).json({ error: { message: "Doctor not found" } });
+
+  const patientCount = await Patient.countDocuments({ doctor: doctor._id });
+  res.json({ data: { ...doctor, patientCount } });
+}
+
+// DELETE /api/doctors/:id  (admin only)
+// Also deletes the doctor's patients, so no patient is left pointing at a missing doctor.
+// (A replica-set MongoDB could wrap both deletes in a transaction.)
+export async function deleteDoctor(req, res) {
+  const doctor = await Doctor.findById(req.params.id).lean();
+  if (!doctor) return res.status(404).json({ error: { message: "Doctor not found" } });
+
+  const { deletedCount } = await Patient.deleteMany({ doctor: doctor._id }); // { doctor } index
+  await Doctor.deleteOne({ _id: doctor._id });
+  res.json({ data: { deletedDoctor: doctor._id, deletedPatients: deletedCount } });
+}
+
 // GET /api/doctors/:id/patients?q=&condition=&from=&to=&page=&limit=
 export async function listDoctorPatients(req, res) {
   const { q, condition, from, to } = req.query;

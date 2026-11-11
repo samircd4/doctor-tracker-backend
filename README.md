@@ -6,12 +6,13 @@ The REST API behind **Doctor Tracker**, an admin portal for managing doctors, th
 |---|---|
 | **Backend repo** | this repo (Express + MongoDB) |
 | **Frontend repo** | [doctor-tracker-frontend](https://github.com/samircd4/doctor-tracker-frontend) (Next.js). Its README has the full project overview, architecture, technical decisions and screenshots. |
-| **Demo login** | `admin@test.com` / `Admin@123` (created by `npm run seed`) |
+| **Live demo** | **https://doctor-tracker.drpythonsolutions.com** |
+| **Demo logins** | Admin (full access): `admin@test.com` / `Admin@123`<br>Staff (view only): `staff@test.com` / `Staff@123`<br>(both created by `npm run seed`) |
 
 ## Description
 A standalone **Node.js + Express 5** REST API on **MongoDB (Mongoose 9)**. It provides:
-- cookie-based **JWT authentication**;
-- **doctor** and **patient** endpoints with search, filters and pagination;
+- cookie-based **JWT authentication** with **role-based authorization** (admin / staff);
+- **doctor** and **patient** endpoints (create, edit, delete) with search, filters and pagination;
 - a **dashboard statistics** endpoint built from aggregation pipelines.
 
 Every request body is validated with **Zod**, every list query is backed by a MongoDB index, and all errors come back as one consistent JSON shape.
@@ -30,7 +31,7 @@ git clone https://github.com/samircd4/doctor-tracker-backend.git
 cd doctor-tracker-backend
 npm install
 cp .env.example .env     # then set JWT_SECRET to a long random string
-npm run seed             # admin user + 30 doctors + 500 patients (replaces existing doctors/patients)
+npm run seed             # admin + staff users, 30 doctors, 500 patients (replaces existing doctors/patients)
 npm run dev              # http://localhost:5000  (auto-restarts with nodemon)
 ```
 Check it: `GET http://localhost:5000/api/health` should return `{"status":"ok","db":"up"}`.
@@ -50,12 +51,14 @@ Then start the [frontend](https://github.com/samircd4/doctor-tracker-frontend#2-
 |---|---|
 | `npm run dev` | Start with auto-restart (nodemon) |
 | `npm start` | Start normally |
-| `npm run seed` | Create the admin user and sample data, and sync indexes |
+| `npm run seed` | Create the admin + staff users and sample data, and sync indexes |
+| `npm run seed -- --users-only` | Only create/update the two demo users and their roles (keeps all doctors and patients) |
 
 ## Architecture
 ```
 request → helmet → cors → JSON body → cookies → route
-        → requireAuth (JWT cookie) → validate (Zod) → controller → Mongoose (lean / aggregate)
+        → requireAuth (JWT cookie) → requireRole("admin") on writes → validate (Zod)
+        → controller → Mongoose (lean / aggregate)
 errors  → errorHandler → { "error": { "message", "details" } }
 ```
 ```
@@ -74,33 +77,37 @@ scripts/seed.js               # sample data
 
 ## API reference
 All routes except `/api/auth/login`, `/api/auth/logout` and `/api/health` require the login cookie.
+**Authorization:** any logged-in user (admin or staff) can read. Routes marked **admin** require the `admin` role; a staff account gets `403`.
 
 **Response formats**
 - **List:** `{ data: [...], meta: { page, limit, total, totalPages } }`
 - **Single item:** `{ data: {...} }`
 - **Error:** `{ error: { message, details: [{ field, message }] } }`
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/auth/login` | `{ email, password }` → sets the httpOnly `token` cookie |
-| POST | `/api/auth/logout` | Clears the cookie |
-| GET | `/api/auth/me` | The logged-in user |
-| GET | `/api/doctors` | Query: `q`, `specialization`, `hospital`, `from`, `to`, `page`, `limit`. Each doctor includes `patientCount`. |
-| GET | `/api/doctors/options` | Doctor names, specializations and hospitals, for dropdowns |
-| POST | `/api/doctors` | Create: `{ name, specialization, hospital, phone, email }` |
-| GET | `/api/doctors/:id` | Doctor detail with `patientCount` |
-| GET | `/api/doctors/:id/patients` | That doctor's patients. Query: `q`, `condition`, `from`, `to`, `page`, `limit` |
-| POST | `/api/doctors/:id/patients` | Add a patient under this doctor |
-| DELETE | `/api/doctors/:id/patients/:patientId` | Remove a patient from this doctor |
-| GET | `/api/patients` | All patients. Query: `q`, `condition`, `doctor`, `gender`, `from`, `to`, `page`, `limit` |
-| PUT | `/api/patients/:id` | Edit a patient (can move them to another doctor) |
-| DELETE | `/api/patients/:id` | Delete a patient |
-| GET | `/api/stats` | Dashboard: totals, new this month vs last month, average per doctor, top 10 doctors, admissions per month, condition breakdown |
-| GET | `/api/health` | API and database status |
+| Method | Path | Access | Description |
+|---|---|---|---|
+| POST | `/api/auth/login` | public | `{ email, password }` → sets the httpOnly `token` cookie |
+| POST | `/api/auth/logout` | public | Clears the cookie |
+| GET | `/api/auth/me` | logged in | The logged-in user |
+| GET | `/api/doctors` | logged in | Query: `q`, `specialization`, `hospital`, `from`, `to`, `page`, `limit`. Each doctor includes `patientCount`. |
+| GET | `/api/doctors/options` | logged in | Doctor names, specializations and hospitals, for dropdowns |
+| POST | `/api/doctors` | **admin** | Create: `{ name, specialization, hospital, phone, email }` |
+| GET | `/api/doctors/:id` | logged in | Doctor detail with `patientCount` |
+| PUT | `/api/doctors/:id` | **admin** | Edit a doctor (any of the 5 fields) |
+| DELETE | `/api/doctors/:id` | **admin** | Delete a doctor **and their patients**. Returns `{ deletedDoctor, deletedPatients }` |
+| GET | `/api/doctors/:id/patients` | logged in | That doctor's patients. Query: `q`, `condition`, `from`, `to`, `page`, `limit` |
+| POST | `/api/doctors/:id/patients` | **admin** | Add a patient under this doctor |
+| DELETE | `/api/doctors/:id/patients/:patientId` | **admin** | Remove a patient from this doctor |
+| GET | `/api/patients` | logged in | All patients. Query: `q`, `condition`, `doctor`, `gender`, `from`, `to`, `page`, `limit` |
+| PUT | `/api/patients/:id` | **admin** | Edit a patient (can move them to another doctor) |
+| DELETE | `/api/patients/:id` | **admin** | Delete a patient |
+| GET | `/api/stats` | logged in | Dashboard: totals, new this month vs last month, average per doctor, top 10 doctors, admissions per month, condition breakdown |
+| GET | `/api/health` | public | API and database status |
 
 **Status codes**
 - `400` validation error or invalid id
 - `401` not logged in, or session expired
+- `403` logged in, but the role isn't allowed (staff trying to change data)
 - `404` not found
 - `409` duplicate email
 - `500` unexpected error (no internal details are leaked)
@@ -123,6 +130,7 @@ One compound index per filter path, declared in the models:
 
 ## Security
 - Passwords are hashed with bcrypt.
+- **Role-based authorization:** the role is stored on the user and signed into the JWT. `requireRole("admin")` guards every write. New users default to the least-privileged role (`staff`).
 - The JWT lives in an **httpOnly, SameSite=Lax** cookie (`Secure` in production) and is never visible to JavaScript.
 - An invalid or expired token is cleared and answered with a 401.
 - Every login failure gets the same message, so attackers can't tell which emails exist.
